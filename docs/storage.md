@@ -105,14 +105,41 @@ comparison of `data-model.md` §6. The engine never calls a comparator.
 | Tree | Key layout |
 |---|---|
 | catalog | `0x01 | text(name)` |
-| collection | `0x02 | collection_id | id_kind(1 byte) | id_bytes` |
-| metadata (per collection counters) | `0x03 | collection_id` |
+| collection | `0x02 | u64 collection_id | id_key` |
+| metadata (per collection counters) | `0x03 | u64 collection_id` |
 
-Encoding rules follow the well-known tuple/memcomparable scheme: big-endian for
-unsigned, bit-inverted big-endian for signed, length-prefixed for text and bytes
-(the length prefix sorts before the content, so a prefix sorts first),
-recursive for arrays, and a type-rank byte in front (`null` = 0x00 …
-`tagged` = 0x08, per `data-model.md` §6). Values are compared by `memcmp` only.
+### 5.1 Encoding primitives
+
+* **Type rank byte, `0x01..0x09`**, in the order of `data-model.md` §6:
+  `null` `0x01`, bool `0x02`, number `0x03`, uuid `0x04`, text `0x05`,
+  bytes `0x06`, array `0x07`, map `0x08`, tagged `0x09`. `0x00` is reserved as a
+  sequence terminator, which is why the ranks do not start at zero.
+* **Integer** *(uuid `0x04`)* — fixed 16 raw bytes; fixed length, so bytewise
+  order is the value order.
+* **Integer** `0x03` — `i64` encoded as `(i as u64) ^ (1 << 63)` in big-endian:
+  the sign flip makes bytewise order equal numeric order over the whole `i64`
+  range, including negatives.
+* **Text / bytes** — the content bytes with `0x00` escaped as `0x00 0xFF`,
+  terminated by a single `0x00`. No length prefix: a length prefix would sort
+  `"b"` before `"aa"`, which contradicts the bytewise text order of
+  `data-model.md` §6. Escaping plus terminator gives bytewise order (identical
+  to Unicode code point order for UTF-8) *and* makes a prefix sort before any
+  extension of itself, which is what prefix scans need.
+* **Array** — type rank, then each element recursively encoded, then `0x00`.
+
+### 5.2 Scope in M0
+
+Exactly what M0 needs: `encode_catalog_key`, `encode_collection_key`,
+`encode_metadata_key` and `encode_id_key` (Int, Uuid, Text). Values are not
+encoded as keys in M0 because M0 has no secondary indexes.
+
+A general value-key encoder is therefore *(reserved)*. Its known hard part is
+recorded here so that it is not discovered later: `data-model.md` §6 places Int
+and Float in one numeric class, so a key encoding for values must map floats
+order-preservingly into the same byte order as integers (IEEE-754 total-order
+transformation with an inverted sign bit for negatives), or the numeric class
+must be split — a decision that belongs to the secondary-index design in M1, not
+to M0.
 
 This is what allows `sort`, range scans and (M1) secondary indexes to be built
 on the storage engine without teaching it the value model.

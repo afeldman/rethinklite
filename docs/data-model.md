@@ -106,15 +106,40 @@ means user documents are byte-identical to what the user wrote, and that
 
 ## 4. Canonical encoding
 
-RethinkLite stores and emits documents as **deterministically encoded CBOR**
-per RFC 8949 §4.2.1 (core deterministic encoding requirements), with map keys
-ordered by §4.2.3 (length-first, then bytewise):
+RethinkLite stores and emits documents as **length-first core deterministically
+encoded CBOR** (RFC 8949 §4.2.3): the core deterministic requirements of §4.2.1
+plus **length-first map key ordering** instead of the plain bytewise ordering
+that §4.2.1 itself prescribes.
 
-1. Integers use the shortest form (preferred serialization, §4.1).
-2. Floats use the shortest form that preserves the value (f16, f32 or f64).
-3. Map keys are sorted by (encoded key length, then bytewise order of the
-   encoded key).
+Rationale for that specific choice: §4.2.3 is byte-identical to RFC 7049
+"Canonical CBOR", which is what stock library canonical modes implement
+(`cbor2` with `canonical=True`, `fxamacker/cbor` with canonical enabled). Since
+the fixture contract must be reproducible by any language's CBOR library without
+hand-written ordering code, matching the widely implemented ordering is worth
+more than matching the letter of §4.2.1's map rule. This deviation is deliberate
+and recorded; it is the only one.
+
+Concretely:
+
+1. Integers use the shortest form (preferred serialization, §4.1). This also
+   applies to tags, lengths and every argument.
+2. Floats use the shortest form that preserves the value (f16, f32 or f64);
+   `1.5` is `0xf93e00`, not a binary64.
+3. Map keys are sorted by encoded key length first, then bytewise
+   (RFC 8949 §4.2.3, RFC 7049 §3.9).
 4. Indefinite-length items are never emitted.
+5. Tag presence is normative, never optional: a UUID `id` **is** tag 37 over 16
+   bytes; an untagged 16-byte byte string is `bytes`, a different value.
+   §4.2.2's warning about giving a tag and its absence the same meaning is thus
+   respected by construction.
+6. Int and Float are distinct types, so the §4.2.2 question "is `1.0` an integer
+   or a float" cannot arise: an integral value encoded as a float stays a float,
+   and a value from major type 0/1 stays an integer. Both are emitted in the
+   shortest form *of their own type*.
+7. `-0.0` and `+0.0` are distinct values with distinct canonical bytes
+   (`0xf98000` / `0xf90000`); numeric comparison treats them as equal, exactly
+   the split between byte identity and value semantics described in §5.2.
+8. Subnormal floats are interchanged as-is; there is no flushing to zero.
 
 Decoder policy: RethinkLite **accepts** non-deterministic CBOR on input
 (indefinite-length strings/arrays/maps, non-shortest integers, unsorted keys)

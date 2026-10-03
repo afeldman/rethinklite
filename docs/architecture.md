@@ -53,10 +53,15 @@ and not a smaller RethinkDB.
 Dependency rule (enforced by the workspace, see §7):
 
 ```
-rtl-value  <-  rtl-storage  <-  rtl-core  <-  { rtl-capi, rtl-cli, rtl-server (M1) }
+rtl-value  <-  rtl-storage  <-  rtl-core  <-  { rethinklite, rtl-capi, rtl-cli, rtl-server (M1) }
 rtl-value  <-  rtl-protocol
 rtl-core   <-  rtl-protocol          (only to map errors; never the reverse)
 ```
+
+* `rethinklite` is the **public facade**: the only crate application code and
+  language bindings depend on. It re-exports `rtl-core` and hosts the `doc!`
+  macro, so the internal crate names (`rtl-*`) can change without breaking a
+  single user, and `rethinklite::Database` in the docs is a real path.
 
 * `rtl-protocol` depends on `rtl-value` **only**. The contract is testable and
   versioned without an engine (golden fixtures run against this crate alone).
@@ -80,7 +85,7 @@ These hold for every M0 build and every test asserts a subset of them:
 | I3 | The superblock is the only commit point. A commit is visible if and only if its superblock is durable and valid. |
 | I4 | Committed state is never lost by a crash; uncommitted state is never visible after recovery. Recovery yields the newest valid superblock, never a partial one. |
 | I5 | A reader holding a snapshot observes a state that was committed at some `commit_seq`, and is never blocked by writers. |
-| I6 | Documents are stored as deterministically encoded CBOR (RFC 8949 §4.2.1). Byte equality is document identity. |
+| I6 | Documents are stored as length-first core deterministically encoded CBOR (RFC 8949 §4.2.3). Byte equality is document identity. |
 | I7 | A write whose canonical bytes equal the stored bytes is a no-op: no `rev` bump, no `commit_seq`, no change event. |
 | I8 | `commit_seq` ordering of the durable log is the ordering of every changefeed and the future replication offset. |
 | I9 | No partial-write corruption escapes: every page, superblock slot and log record is checksummed; a failed checksum is an error, never a silent misread. |
@@ -158,6 +163,7 @@ rethinklite/
 │   ├── rtl-value/             value model, canonical CBOR codec, key codec, order
 │   ├── rtl-storage/           pager, COW B+tree, superblock, log segments, recovery
 │   ├── rtl-core/              Database/Collection API, transactions, query, changes
+│   ├── rethinklite/           public facade: re-exports rtl-core, hosts `doc!`
 │   ├── rtl-protocol/          envelope, operations, errors, negotiation (contract only)
 │   ├── rtl-cli/               binary `rtl`
 │   └── rtl-capi/              C ABI (cdylib + cbindgen) — M1
@@ -194,7 +200,7 @@ The threat model that *is* enforced:
 |---|---|
 | Malformed/hostile CBOR from a client | bounded decoder (depth 100, sizes checked, no unbounded allocation from declared lengths before validation), no `unwrap` on input paths |
 | Hostile query expressions | no eval, no scripts, no string DSL; the term tree is a closed set with arity/type checks |
-| Accidental data loss | WAL-log + superblock integrity, checksums, `rtl check` |
+| Accidental data loss | log segments + superblock integrity, checksums, `rtl check` |
 | Foreign process writing the file | exclusive `flock` |
 | Local multi-user access | file permissions only; documented as out of scope for M0 |
 

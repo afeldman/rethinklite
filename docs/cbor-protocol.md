@@ -28,10 +28,18 @@ implementation later.
 
 ## 2. Encoding rules
 
-* RethinkLite **emits** deterministically encoded CBOR per RFC 8949 §4.2.1 with
-  length-first key ordering (§4.2.3).
+* RethinkLite **emits** length-first core deterministically encoded CBOR
+  (RFC 8949 §4.2.3): shortest-form arguments and floats, no indefinite-length
+  items, map keys sorted by length first and then bytewise. This is
+  byte-identical to RFC 7049 "Canonical CBOR" and therefore to the canonical
+  mode of stock CBOR libraries, which is what makes cross-language fixtures
+  cheap to reproduce (`data-model.md` §4 records the deviation from §4.2.1's
+  plain bytewise rule and why it is deliberate).
 * RethinkLite **accepts** non-deterministic CBOR on input (indefinite-length
   items, non-shortest integers, unsorted map keys) and canonicalizes it.
+* Tag presence is normative: values that are defined as tagged are always
+  emitted tagged, and an untagged value is never treated as the tagged one
+  (RFC 8949 §4.2.2).
 * Map keys in requests and responses are text strings. Documents additionally
   require text keys everywhere (`data-model.md` §2.1).
 * Documents inside payloads use exactly the value model of `data-model.md`.
@@ -172,9 +180,11 @@ Rules:
 `close` flushes, releases the file lock and (in a daemon) ends the session.
 Pending feeds end with `reason: "closed"`; open transactions abort.
 
-`cancel` requests cancellation of an in-flight request by its id. Cancellation
-is cooperative and checked between work units; a query that has already
-produced its response reports `"cancelled": false`.
+`cancel` requests cancellation of an in-flight request by its id. The body field
+is named `request` and refers to the same value space as the envelope field of
+that name; the nesting level disambiguates them. Cancellation is cooperative and
+checked between work units; a query that has already produced its response
+reports `"cancelled": false`.
 
 ### 6.2 Collections
 
@@ -454,12 +464,34 @@ Diagnostic example (a real fixture, `tests/cbor/query_request.cbor`):
 
 ## 10. Golden fixtures
 
-`tests/cbor/` contains normative byte fixtures: `insert_request.cbor`,
-`insert_response.cbor`, `get_response.cbor`, `query_request.cbor`,
-`query_response.cbor`, `count_response.cbor`, `transaction_request.cbor`,
-`watch_request.cbor`, `change_event.cbor`, `error_response.cbor`,
-`hello_request.cbor`, `hello_response.cbor`, plus `MANIFEST.md` (fixture → bytes
-→ SHA-256 → intent).
+`tests/cbor/` contains the normative bytes of this contract:
+
+| Fixture | Items | What it pins |
+|---|---:|---|
+| `hello_request.cbor` | 1 | client handshake, offered and required features |
+| `hello_response.cbor` | 1 | server identity, database uuid/format, granted features, limits |
+| `insert_request.cbor` | 1 | `collection.insert`, canonical form of a small document |
+| `insert_response.cbor` | 1 | insert result envelope |
+| `get_response.cbor` | 1 | metadata plus a byte-identical stored document |
+| `uuid_id_request.cbor` | 1 | a UUID `id` as CBOR tag 37 over 16 bytes |
+| `query_request.cbor` | 1 | a term chain (`filter` → `sort desc` → `limit`) |
+| `query_response.cbor` | 1 | documents plus `returned`/`scanned`/`truncated` |
+| `count_response.cbor` | 1 | `collection.count` result |
+| `transaction_request.cbor` | 3 | one CBOR Sequence: `transaction.begin`, an update inside the transaction, `transaction.commit` |
+| `watch_request.cbor` | 1 | subscription request with a filter expression |
+| `change_event.cbor` | 1 | one change event with `old` and `new` |
+| `error_response.cbor` | 1 | error envelope for a `revision_conflict` |
+
+A fixture file is a CBOR Sequence and may hold more than one item
+(`transaction_request.cbor` deliberately does, which is also the test that
+sequences work).
+
+Per fixture, `MANIFEST.md` records item count, byte size, SHA-256 and intent,
+plus a hex dump of the exact bytes. Supporting tools, all in `tests/cbor/`:
+`generate_fixtures.py` (needs `cbor2` at development time only),
+`verify_fixtures.py` (dependency-free canonicality checker, rules C1–C6),
+`selftest_verifier.py` (proves the checker can fail), `make_manifest.py`
+(regenerates the manifest from the bytes on disk).
 
 Conformance requirement for any implementation:
 
