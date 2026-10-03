@@ -93,8 +93,11 @@ self-delimiting), and it breaks cross-language interop.
 
 * Exactly one of `body` / `error` is present, matching `status`.
 * Responses may arrive out of order; `request` correlates them.
-* One request produces exactly one response **unless** it opens a stream (§7),
-  in which case the response opens the stream and items follow.
+* One request produces exactly one response **unless** it opens a stream (§7), in
+  which case the response opens the stream and items follow.
+* `protocol` in a response equals the negotiated version, with exactly one
+  exception: the `version_unsupported` response of §5 sets `protocol` to `0` so
+  that a peer whose major version is unknown to us can still parse the envelope.
 
 ### 4.3 Error object
 

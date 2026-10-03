@@ -342,5 +342,5 @@ replicating DDL.
 | `rtl vacuum` / compaction | correctness first; file growth is documented behaviour; M1 |
 | Secondary indexes | M1 (`index` error kind already reserved) |
 | Page compression, encryption, mmap fast path | need their own designs; M2 |
-| Read-only mode, multi-process readers | M1/M2, needs a lock-and-version story |
+| Read-only mode, multi-process readers | M2, needs a lock-and-version story |
 | Repair tooling | M2; M0 never repairs silently |

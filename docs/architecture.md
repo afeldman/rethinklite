@@ -142,7 +142,8 @@ because both come from the same ordered history (`changefeeds.md`).
 * **Synchronous core.** No async runtime, no `tokio` in `rtl-core`. Blocking
   calls, `Send + Sync` handles. Rationale: embedded FFI is inherently
   synchronous, and async can be layered on top outside the core
-  (`adr/0009-concurrency-model.md`).
+  (`adr/0009-concurrency-model.md`). The M1 IPC daemon is therefore a
+  thread-per-connection *synchronous* server; it needs no async runtime either.
 * **Single writer.** One read-write transaction at a time, serialized by a
   `Mutex` inside `Database`. Readers are unaffected.
 * **Snapshot readers.** Copy-on-write pages give every reader a consistent,
@@ -247,4 +248,8 @@ cargo test --workspace
 * **License** — not yet chosen (candidates: `MIT OR Apache-2.0`, consistent
   with the author's other Rust projects). Required before the first public
   commit; not required for M0 implementation.
-* **Async façade** (`rtl-async`, `rtl-server`) — M1; shape decided then.
+* **Local IPC daemon** (`rtl-server`) — M1: a thread-per-connection synchronous
+  server over a Unix domain socket, no async runtime.
+* **Async façade** (`rtl-async`) — M2: a thin layer outside the core, for
+  callers that already live in an async runtime. Shape decided then; it must not
+  pull an async runtime into `rtl-core`.
