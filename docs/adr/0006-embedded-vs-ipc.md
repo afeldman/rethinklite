@@ -58,8 +58,9 @@ is reached without forking the semantics.
 
 ### Follow-up when the cost becomes relevant
 
-* When the M1 daemon is built, the Unix-socket permission model and the reserved
-  `rtl-async`/`rtl-server` shapes are decided then.
+* When the M1 daemon (`rtl-server`, a synchronous thread-per-connection server) is
+  built, the Unix-socket permission model is decided then; an async façade
+  (`rtl-async`) is M2 and must stay a thin layer outside the core.
 * Network support waits for a separate security design and remains an explicit
   non-goal until it exists.
 
